@@ -7,19 +7,29 @@ for (sc in 1:num_scenarios) {
   set.seed(seeds_scenarios[sc])
   seeds_simulation <- sample.int(.Machine$integer.max, num_simulation)
   
-  ##Step 0: generate simulated data and settings for the following two steps
-  ##treatment effect
-  trt_eff <- trt_effect(trt = simulation_scenarios[sc, "trt"])
+  ##Treatment effect
+  trt_eff <- simulation_scenarios[sc, "trt"]
   
-  ##heterogeneity level
-  heterogeneity <- diff_between_current_hist(heterogeneity = simulation_scenarios[sc, "heterogeneity"])
+  ##Heterogeneity level
+  heterogeneity <- simulation_scenarios[sc, "heterogeneity"]
   
-  power_marg <- bias_marg <- sd_marg <- mse_marg <- pow_par_marg <- vector()
+  ##Empty vectors to store the result
+  power_marg <- bias_marg <- se_marg <- mse_marg <- pow_par_marg <- vector()
 
 for (ns in 1:num_simulation) {
-  ##generate current and historical dataset
-  source("datgen.R")
-  ##data for stan
+  ##Simulated data generation
+  set.seed(seeds_simulation[ns])
+  
+  ##Current data
+  current <- datagen_current(num_tp = num_tp, num_group = num_group, num_fe = num_fe_current, num_re = num_re, 
+                             beta = beta, var_b = var_b, var_e = var_e,
+                             num_control = nsubpa, num_treat = nsubpa)
+  ##Historical data
+  historical <- datagen_historical(num_tp = num_tp, num_fe = num_fe_hist, num_re = num_re, 
+                                   beta = beta, var_b = var_b, var_e = var_e, 
+                                   num_control = nsubpa)
+  
+  ##Modify the data for stan
   data_marg <- sourceToList("./Marginal MPP/Marginal MPP_stan_data.R")
   
   ##Step 1: The calculation of scaling constant
@@ -53,10 +63,15 @@ for (ns in 1:num_simulation) {
     ##AUC under each interval, AUC for 0 is 0, unweighted
     logsc[i, 2] <- mean(sample_fixedpow@sim$samples[[1]]$loglik_fixedpow[(num_iter_s1*perc_burnin_s1+1):num_iter_s1])
   }
+  
   ##Weighted AUC
   logsc[2:num_power, 3] <- logsc[2:num_power, 2]*interval_width
+  
   ##Cumulative area under the curve
   logsc[, 4] <- cumsum(logsc[, 3])
+  
+  ##Only keep power values and corresponding logsc
+  logsc <- logsc[, c(1, 4)]
   
   ##Step 2: The sampling of parameters in posterior distribution
   ##Now we have a grid of log scaling constant corresponding to specific power parameter
@@ -69,7 +84,7 @@ for (ns in 1:num_simulation) {
   ##Transform stanfit to data frames and summarize parameters of interest
   beta_trt <- as.data.frame(sample_marg)$beta_trt
   
-  ##The type I error or statistical power for interaction
+  ##The type I error or statistical power for the treatment effect
   power_marg[ns] <- 
     (quantile(beta_trt, 0.025) < 0 & quantile(beta_trt, 0.975) > 0) 
   
@@ -84,8 +99,9 @@ for (ns in 1:num_simulation) {
     bias_marg[ns] <- mean(beta_trt - interaction_time_trt)
     mse_marg[ns] <- mean((beta_trt - interaction_time_trt)^2)
   }
-  ##Standard deviation
-  sd_marg[ns] <- sd(beta_trt)
+  
+  ##Standard error for the treatment effect
+  se_marg[ns] <- sd(beta_trt)
   
   ##The results of power parameter
   pow_par_marg[ns] <- mean(as.data.frame(sample_marg)$power)
@@ -93,13 +109,13 @@ for (ns in 1:num_simulation) {
   ##Progress 
   print(paste0("scenario: ", sc, ", iteration: ", ns))
 }
-  write.csv(cbind(bias_marg, sd_marg, mse_marg, pow_par_marg, power_marg),
+  write.csv(cbind(bias_marg, se_marg, mse_marg, pow_par_marg, power_marg),
             paste0("res_marg_", sc, ".csv"), row.names = F)
 }
 end_all <- Sys.time()
 end_all - start_all 
 
-##Store the results
+##Summary of the results of different scenarios
 res_marg <- matrix(NA, num_scenarios, 5)
 colnames(res_marg) <- c("power", "bias", "se", "mse", "pow_par_IQR")
 
@@ -107,7 +123,7 @@ for (i in 1:nrow(res_marg)) {
   aa <- read.csv(paste0("res_marg_", i, ".csv"))
   res_marg[i, "power"] <- round(1 - mean(aa$power_marg), 3)
   res_marg[i, "bias"] <- paste0(round(mean(aa$bias_marg), 3), " (", round(quantile(aa$bias_marg, 0.025), 3), ", ",  round(quantile(aa$bias_marg, 0.975), 3),")") 
-  res_marg[i, "se"] <- paste0(round(mean(aa$sd_marg), 3), " (", round(quantile(aa$sd_marg, 0.025), 3), ", ",  round(quantile(aa$sd_marg, 0.975), 3),")") 
+  res_marg[i, "se"] <- paste0(round(mean(aa$se_marg), 3), " (", round(quantile(aa$se_marg, 0.025), 3), ", ",  round(quantile(aa$se_marg, 0.975), 3),")") 
   res_marg[i, "mse"] <- paste0(round(mean(aa$mse_marg), 3), " (", round(quantile(aa$mse_marg, 0.025), 3), ", ",  round(quantile(aa$mse_marg, 0.975), 3),")")
   ##median and IQR
   res_marg[i, "pow_par_IQR"] <- paste0(round(median(aa$pow_par_marg), 2), 

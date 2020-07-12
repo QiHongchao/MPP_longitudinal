@@ -12,6 +12,6 @@ K0 <- ncol(x0) ##number of fixed effects in historical study, there is no intera
 K <- ncol(x)  ##number of fixed effects in current study
 L <- ncol(z0)  ##number of random effects, we assume same random effects in historical and current data
 num_power <- num_power  ##number of power values
-logsc <- logsc[,c(1,4)]  ##Log scaling constant
+logsc <- logsc  ##Log scaling constant
 sub_index0 <- sub_index_specification(data = historical)  ##subject index for historical data
 sub_index <- sub_index_specification(data = current)  ##subject index for current data
