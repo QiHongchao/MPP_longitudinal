@@ -1,82 +1,68 @@
 ##Simulation preparation
 source("../Functions_definition.R")
 
+##Stan file compilation
+sm_current <- stan_model("Current_Stan.stan")
+
+##Samples for different scenarios
+sample_current_scenarios <- list(NULL)
+
 start <- Sys.time()
-for (sc in 1:num_scenarios) {
+for (sc in 1:Num_scenarios) {
   ##random seeds generation
   set.seed(seeds_scenarios[sc])
-  seeds_simulation <- sample.int(.Machine$integer.max, num_simulation)
-
-  ##Treatment effect
-  trt_eff <- simulation_scenarios[sc, "trt"]
+  seeds_simulation <- sample.int(.Machine$integer.max, Num_simulation)
+  heterogeneity_trt <- diff_between_current_hist(heterogeneity = simulation_scenarios[sc, 4], trt = simulation_scenarios[sc, 1])  
+  power_beta_trt <- mean_beta_trt <- sd_beta_trt <- vector()
   
-  ##Heterogeneity level
-  heterogeneity <- simulation_scenarios[sc, "heterogeneity"]
-  
-  ##Empty vectors to store the result
-  power_beta_trt <- bias_beta_trt <- se_beta_trt <- mse_beta_trt <- vector()
-  
-  for (ns in 1:num_simulation) {
-    ##Simulated data generation
-    set.seed(seeds_simulation[ns])
+  for (ns in 1:Num_simulation) {
     
-    ##Current data
-    current <- datagen_current(num_tp = num_tp, num_group = num_group, num_fe = num_fe_current, num_re = num_re, 
-                               beta = beta, var_b = var_b, var_e = var_e,
-                               num_control = nsubpa, num_treat = nsubpa)
-    ##Historical data
-    historical <- datagen_historical(num_tp = num_tp, num_fe = num_fe_hist, num_re = num_re, 
-                                     beta = beta, var_b = var_b, var_e = var_e, 
-                                     num_control = nsubpa)
-    ##Modify the data for stan
-    data_current <- sourceToList("./No borrowing/Current_stan_data.R")
+    ##Generate simulated data
+    source("../datgen.R")
+    
+    data_current <- sourceToList("Current_Stan_data.R")
+    
+    init <- list(beta = c(2, 1, as.numeric(sc>7)*interaction_time_trt), Omega = diag(1, 2),
+                 tau = rep(0.5, 2), sigma = 1)
     
     ##sampling
-    sample_current <- sampling(sm_current, data = data_current, chains = num_chains, 
-                                seed = seeds_simulation[ns], init = "random",
-                                iter = num_iter, warmup=num_iter*perc_burnin, refresh = 0, cores = detectCores(),
-                                control = list(stepsize = 0.99, max_treedepth = 15))
+    sample_current <- sampling(sm_current, data = data_current, chains = Num_chains, 
+                                init = list(init, init, init, init),
+                                iter = Num_iter, warmup=Num_iter*perc_burnin, refresh = 0, cores = Num_chains)
 
   ##Extract the results from the samples
-  ##Transform stanfit to data frames and summarize parameters of interest
+  ##Transform Stanfit to data frames and summarize parameters of interest
   beta_trt <- as.data.frame(sample_current)$"beta[3]"
   
   ##The type I error or statistical power for the treatment effect
   power_beta_trt[ns] <- 
       (quantile(beta_trt, 0.025) < 0 & quantile(beta_trt, 0.975) > 0) 
   
-  ##Bias and MSE
-  ##No interaction effect
-  if (simulation_scenarios[sc, 1] == 0) {
-    bias_beta_trt[ns] <- mean(beta_trt)
-    mse_beta_trt[ns] <- mean(beta_trt^2)
-    }
-  ##With interaction effect
-  if (simulation_scenarios[sc, 1] == 1) {
-    bias_beta_trt[ns] <- mean(beta_trt - interaction_time_trt)
-    mse_beta_trt[ns] <- mean((beta_trt - interaction_time_trt)^2)
-    }
-  
-  ##Standard error for the treatment effect
-  se_beta_trt[ns] <- sd(beta_trt)
+  ##Treatment effect estimate
+  mean_beta_trt[ns] <- mean(beta_trt)
+  ##Standard deviation
+  sd_beta_trt[ns] <- sd(beta_trt)
   
   ##Progress
   print(paste0("scenario: ", sc, ", iteration: ", ns))
   }
-  write.csv(cbind(bias_beta_trt, se_beta_trt, mse_beta_trt, power_beta_trt),
-            paste0("res_current_", sc, ".csv"), row.names = F)
+  sample_current_scenarios[[sc]] <- cbind(power_beta_trt, mean_beta_trt, sd_beta_trt)
 }
 end <- Sys.time()
 end - start
 
-##Summary of the results of different scenarios
-res_current <- matrix(NA, num_scenarios, 4)
-colnames(res_current) <- c("power", "bias", "se", "mse")
-for (i in 1:nrow(res_current)) {
-  aa <- read.csv(paste0("res_current_", i, ".csv"))
-  res_current[i, "power"] <- round(1 - mean(aa$power_beta_trt), 3)
-  res_current[i, "bias"] <- paste0(round(mean(aa$bias_beta_trt), 3), " (", round(quantile(aa$bias_beta_trt, 0.025), 3), ", ",  round(quantile(aa$bias_beta_trt, 0.975), 3),")") 
-  res_current[i, "se"] <- paste0(round(mean(aa$se_beta_trt), 3), " (", round(quantile(aa$se_beta_trt, 0.025), 3), ", ",  round(quantile(aa$se_beta_trt, 0.975), 3),")") 
-  res_current[i, "mse"] <- paste0(round(mean(aa$mse_beta_trt), 3), " (", round(quantile(aa$mse_beta_trt, 0.025), 3), ", ",  round(quantile(aa$mse_beta_trt, 0.975), 3),")")
+##Summary of the results
+summary_current <- data.frame(power = rep(NA, Num_scenarios), bias = NA, se = NA, mse = NA)
+for (sc in 1:Num_scenarios) {
+  res <- sample_current_scenarios[[sc]]
+  ##Type I error rate/Power
+  summary_current[sc, "power"] <- round((1 - mean(res$power_beta_trt)) * 100, 1)
+  ##Bias
+  bias <- res$mean_beta_trt - as.numeric(sc>7)*interaction_time_trt
+  summary_current[sc, "bias"] <- paste0(round(mean(bias), 3), " (", round(quantile(bias, 0.025), 3), ", ",  round(quantile(bias, 0.975), 3),")") 
+  ##SE
+  summary_current[sc, "se"] <- paste0(round(mean(res$sd_beta_trt), 3), " (", round(quantile(res$sd_beta_trt, 0.025), 3), ", ",  round(quantile(res$sd_beta_trt, 0.975), 3),")") 
+  ##MSE
+  mse <- (res$mean_beta_trt - as.numeric(sc>7)*interaction_time_trt)^2
+  summary_current[sc, "mse"] <- paste0(round(mean(mse), 3), " (", round(quantile(mse, 0.025), 3), ", ",  round(quantile(mse, 0.975), 3),")")
 }
-write.csv(res_current, "res_current_summary.csv", row.names = F)
