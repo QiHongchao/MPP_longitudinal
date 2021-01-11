@@ -162,7 +162,6 @@ sm2_marg <- stan_model("./Marginal MPP/Marginal MPP_stan_s2.stan")
 
 ##The conditional MPP
 sm1_cond <- stan_model("./Conditional MPP/Conditional MPP_stan_s1.stan")
-sm2_cond_fixedpow <- stan_model("./Conditional MPP/Conditional/MPP_stan_warmup_s1.stan")
 sm2_cond <- stan_model("./Conditional MPP/Conditional MPP_stan_s2.stan")
 
 ##The commensurate prior

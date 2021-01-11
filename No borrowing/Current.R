@@ -1,5 +1,5 @@
 ##Simulation preparation
-source("Functions_definition.R")
+source("../Functions_definition.R")
 
 start <- Sys.time()
 for (sc in 1:num_scenarios) {
