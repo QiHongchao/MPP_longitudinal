@@ -100,9 +100,9 @@ for (ns in 1:Num_simulation) {
   power_beta_trt[ns] <- 
     (quantile(beta_trt, 0.025) < 0 & quantile(beta_trt, 0.975) > 0) 
   
-  ##Treatment effect estimate
+  ##Posterior mean of the treatment effect
   mean_beta_trt[ns] <- mean(beta_trt)
-  ##Standard deviation
+  ##Posterior standard deviation of the treatment effect
   sd_beta_trt[ns] <- sd(beta_trt)
   
   ##Mean power parameter
