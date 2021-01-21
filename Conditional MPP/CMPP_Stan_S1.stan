@@ -39,11 +39,12 @@ model {
   //prior for sigma
   sigma ~ normal(0, 2);
   //likelihood downweighted with fixed power
-  for (j in 1:J)
+  for (j in 1:J) {
+  b[j, ] ~ multi_normal(rep_vector(0, L), quad_form_diag(Omega, tau));
   target += power * (multi_normal_lpdf(y[sub_index[2*j-1] : sub_index[2*j]] |
   x[sub_index[2*j-1] : sub_index[2*j]] * beta + z[sub_index[2*j-1] : sub_index[2*j]] * to_vector(b[j, ]),
-  diag_matrix(rep_vector(sigmasq, sub_index[2*j]-sub_index[2*j-1]+1)))) +
-  multi_normal_lpdf(b[j, ] | rep_vector(0, L), quad_form_diag(Omega, tau));
+  diag_matrix(rep_vector(sigmasq, sub_index[2*j]-sub_index[2*j-1]+1))));
+  }
 }
 //generated quantities block, log likelihood given the samples, to calculate log scaling constant
 generated quantities{
