@@ -12,7 +12,6 @@ for (sc in 1:Num_scenarios) {
   ##seeds generation
   set.seed(seeds_scenarios[sc])
   seeds_simulation <- sample.int(.Machine$integer.max, Num_simulation)
-  heterogeneity_trt <- diff_between_current_hist(heterogeneity = simulation_scenarios[sc, 4], trt = simulation_scenarios[sc, 1])  
   power_beta_trt <- mean_beta_trt <- sd_beta_trt <- vector()
   
   for (ns in 1:Num_simulation) {

@@ -2,8 +2,9 @@
 set.seed(seeds_simulation[ns])
 
 ##Current data
-current <- design_matrix_gen_current(ntp=simulation_scenarios[sc, 2], num_re=2, fe=c(2,1), varb1=0.25, varb2=0.25, varw=1,
-                                     num_control = simulation_scenarios[sc, 3], num_treat = simulation_scenarios[sc, 3])
+current <- current_data_gen(heterogeneity = simulation_scenarios$heterogeneity[sc], fe = c(2, 1), 
+                                     trt = simulation_scenarios$trt_eff[sc], ntp=num_measures, ngroup = 2, 
+                                     varb = c(0.25, 0.25), varw=1, num_control = num_subject, num_treat = num_subject)
 ##Historical data
-historical <- design_matrix_gen_hc(ntp=simulation_scenarios[sc, 2], num_re=2, fe=c(2,1), varb1=0.25, varb2=0.25, varw=1,
-                                   num_control = simulation_scenarios[sc, 3])
+historical <- historical_data_gen(heterogeneity = simulation_scenarios$heterogeneity[sc], fe=c(2,1), ntp=num_measures, 
+                                   varb = c(0.25, 0.25), varw=1, num_control = num_subject)

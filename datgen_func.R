@@ -1,77 +1,65 @@
-##In oder to simplify the case, I simulate an RCT with equal number of patients in treatment and control arm, respectively.
-##Design matrix: we assume current and historical study have the same design matrix.
-##Design matrix for fixed effects and random effects
-design_matrix_gen_current<-function(ntp,group=2,num_fe=3,num_re=2,fe=c(2,1),varb1,varb2,varw,num_control,num_treat){
-  ##with treatment effect or not
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[2] == "No") {fe[3] <- 0}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[2] == "Yes") {fe[3] <- interaction_time_trt}
-  
+##Generate current data
+current_data_gen<-function(heterogeneity,fe,trt,ntp,ngroup,varb,varw,num_control,num_treat){
+  ##Between-study heterogeneity
+  if (heterogeneity == 0) {cov_study <- diag(0, 2)}
+  if (heterogeneity == 1) {cov_study <- diag(c(0.01, 0))}
+  if (heterogeneity == 2) {cov_study <- diag(c(0.09, 0))}
+  if (heterogeneity == 3) {cov_study <- diag(c(0.16, 0))}
+  if (heterogeneity == 4) {cov_study <- diag(0.01, 2)}
+  if (heterogeneity == 5) {cov_study <- diag(0.09, 2)}
+  if (heterogeneity == 6) {cov_study <- diag(0.16, 2)}
+  fe_current <- rmvnorm(1, fe, cov_study)
   ##Design matrix for fixed effect
-  dm_fe<-matrix(NA,ntp*group,num_fe)
-  dm_fe[,1]<-1
-  dm_fe[,2]<-rep(seq(0, 1, 1/(ntp-1)),group) ##time point start from 0, equally spaced, time interval is 1
-  dm_fe[,3]<-dm_fe[,2]*c(rep(0,ntp),rep(1,ntp))
+  time <- rep(seq(0, 1, 1/(ntp-1)),ngroup)
+  group <- rep(c(0, 1), each = ntp)
+  dm_fe <- model.matrix( ~ time + time:group)
   ##Design matrix for random effects
-  dm_re<-matrix(NA,ntp,num_re)
-  dm_re[,1]<-1
-  dm_re[,2]<-seq(0, 1, 1/(ntp-1))
+  dm_re <- model.matrix( ~ time[1:ntp])
   ##Control arm
-  control<-rmvnorm(num_control,dm_fe[1:ntp,]%*%fe, dm_re%*%(c(varb1,varb2)*diag(1,num_re))%*%t(dm_re)+varw*diag(1,ntp))
-  dm_fe_control<-matrix(NA,ntp*num_control,num_fe+2)
-  dm_fe_control[,1]<-1
-  dm_fe_control[,2]<-rep(seq(0, 1, 1/(ntp-1)),num_control)
-  dm_fe_control[,3]<-0
+  data_control <- data.frame(time = rep(seq(0, 1, 1/(ntp-1)),num_control), group = 0)
   for (i in 1:num_control){
-    dm_fe_control[(ntp*(i-1)+1):(ntp*i),num_fe+1]<-control[i,]
+    data_control$response[(ntp*(i-1)+1):(ntp*i)]<- rmvnorm(1,dm_fe[1:ntp,]%*%c(fe_current, trt), 
+                                                   dm_re%*%diag(varb)%*%t(dm_re)+varw*diag(1,ntp))
   }
   ##Treatment arm
-  treat<-rmvnorm(num_treat,dm_fe[(ntp+1):(ntp*2),]%*%fe, dm_re%*%(c(varb1,varb2)*diag(1,num_re))%*%t(dm_re)+varw*diag(1,ntp))
-  dm_fe_treat<-matrix(NA,ntp*num_control,num_fe+2)
-  dm_fe_treat[,1]<-1
-  dm_fe_treat[,2]<-rep(seq(0, 1, 1/(ntp-1)),num_treat)
-  dm_fe_treat[,3]<-dm_fe_treat[,2]
+  data_treat <- data.frame(time = rep(seq(0, 1, 1/(ntp-1)),num_treat), group = 1)
   for (i in 1:num_treat){
-    dm_fe_treat[(ntp*(i-1)+1):(ntp*i),num_fe+1]<-treat[i,]
+    data_treat$response[(ntp*(i-1)+1):(ntp*i)]<- rmvnorm(1,dm_fe[(ntp+1):(ntp*2),]%*%c(fe_current, trt), 
+                                                         dm_re%*%diag(varb)%*%t(dm_re)+varw*diag(1,ntp))
   }
-  ##Response
-  response<-rbind(dm_fe_control,dm_fe_treat)
-  response[,num_fe+2]<-sort(rep(1:(num_control+num_treat),ntp))
-  colnames(response)<-c("int","time","interaction","response","id")
+  ##Data
+  data<-rbind(data_control,data_treat)
+  data$id<-sort(rep(1:(num_control+num_treat),ntp))
   ##Return the dataset
-  return(as.data.frame(response))
+  return(data)
 }
 
-design_matrix_gen_hc<-function(ntp,num_fe=2,num_re=2,fe=c(2,1),varb1,varb2,varw,num_control){
-  ##standard deviation of time trend
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "No") {cov_study <- matrix(rep(0, 4), 2)}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "Low+RI") {cov_study <- matrix(c(0.01, 0, 0, 0), 2)}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "Moderate+RI") {cov_study <- matrix(c(0.09, 0, 0, 0), 2)}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "High+RI") {cov_study <- matrix(c(0.16, 0, 0, 0), 2)}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "Low+RIS") {cov_study <- diag(rep(0.01, 2))}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "Moderate+RIS") {cov_study <- diag(rep(0.09, 2))}
-  if (get("heterogeneity_trt", envir = .GlobalEnv)[1] == "High+RIS") {cov_study <- diag(rep(0.16, 2))}
+##Genreate historical data
+historical_data_gen<-function(heterogeneity,fe,ntp,varb,varw,num_control){
+  ##Between-study heterogeneity
+  if (heterogeneity == 0) {cov_study <- diag(0, 2)}
+  if (heterogeneity == 1) {cov_study <- diag(c(0.01, 0))}
+  if (heterogeneity == 2) {cov_study <- diag(c(0.09, 0))}
+  if (heterogeneity == 3) {cov_study <- diag(c(0.16, 0))}
+  if (heterogeneity == 4) {cov_study <- diag(0.01, 2)}
+  if (heterogeneity == 5) {cov_study <- diag(0.09, 2)}
+  if (heterogeneity == 6) {cov_study <- diag(0.16, 2)}
   
   ##Design matrix for fixed effect
-  dm_fe<-matrix(NA,ntp,num_fe)
-  dm_fe[,1]<-1
-  dm_fe[,2]<-seq(0, 1, 1/(ntp-1)) ##time point start from 0, equally spaced, time interval is 1/5
+  time <- seq(0, 1, 1/(ntp-1)) ##time point start from 0, equally spaced, time interval is 1/5
+  dm_fe <- model.matrix( ~ time)
   ##Design matrix for random effects
-  dm_re<-matrix(NA,ntp,num_re)
-  dm_re[,1]<-1
-  dm_re[,2]<-seq(0, 1, 1/(ntp-1))
-  ##Control arm
-  control<-rmvnorm(num_control,dm_fe[1:ntp,]%*%fe + dm_fe[1:ntp,]%*%as.numeric(rmvnorm(1, rep(0,ncol(dm_fe)), cov_study)), 
-                   dm_re%*%(c(varb1,varb2)*diag(1,num_re))%*%t(dm_re)+varw*diag(1,ntp))
-  dm_fe_control<-matrix(NA,ntp*num_control,num_fe+2)
-  dm_fe_control[,1]<-1
-  dm_fe_control[,2]<-rep(seq(0, 1, 1/(ntp-1)),num_control)
-  for (i in 1:num_control){
-    dm_fe_control[(ntp*(i-1)+1):(ntp*i),num_fe+1]<-control[i,]
+  dm_re <- dm_fe
+  ##Historical control arm
+  data_control <- data.frame(time = rep(seq(0, 1, 1/(ntp-1)),num_control), group = 0)
+  
+  fe_hist <- fe + t(rmvnorm(1, rep(0,ncol(dm_fe)), cov_study))
+  
+  for (i in 1:num_control) {
+    data_control$response[(ntp*(i-1)+1):(ntp*i)] <- rmvnorm(1,dm_fe%*%fe_hist, 
+                                                          dm_re%*%diag(varb)%*%t(dm_re)+varw*diag(1,ntp))
   }
-  ##Response
-  response<-dm_fe_control
-  response[,num_fe+2]<-sort(rep(1:num_control,ntp))
-  colnames(response)<-c("int","time","response","id")
+  data_control$id <- sort(rep(1:num_control,ntp))
   ##Return the dataset
-  return(as.data.frame(response))
+  return(data_control)
 }
