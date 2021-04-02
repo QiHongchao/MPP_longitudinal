@@ -14,7 +14,7 @@ options(mc.cores = parallel::detectCores(logical = FALSE))
 devAskNewPage(ask = FALSE)
 
 ##Define functions in advance
-##Func1: Import data and initial values
+##Func 1: Import data and initial values
 sourceToList <- function(file){
   source(file, local = TRUE)
   d = mget(ls())
